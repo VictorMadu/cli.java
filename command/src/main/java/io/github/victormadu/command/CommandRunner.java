@@ -1,6 +1,7 @@
 package io.github.victormadu.command;
 
 import java.util.Map;
+import java.util.Optional;
 
 public class CommandRunner {
     private final CommandHandler handler;
@@ -15,7 +16,7 @@ public class CommandRunner {
         return handler.execute(params);
     }
 
-    public Class<?> getGenericClassOfReturnType() {
-        return handler.getGenericReturnType();
+    public Optional<Class<?>> getGenericClassOfReturnType() {
+        return handler.getGenericTypeArgumentOfReturnType();
     }
 }

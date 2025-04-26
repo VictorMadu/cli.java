@@ -10,6 +10,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Optional;
 
 import io.github.victormadu.command.annotation.Command;
 import io.github.victormadu.command.annotation.Param;
@@ -89,14 +90,17 @@ class CommandHandler {
         return methodHandle.invokeWithArguments(args);
     }
 
-    public Class<?> getGenericReturnType() {
+    public Optional<Class<?>> getGenericTypeArgumentOfReturnType() {
         if (genericReturnType == null) {
             Type gReturnType = method.getGenericReturnType();
+            if (!(gReturnType instanceof ParameterizedType)) {
+                return Optional.empty();
+            }
             ParameterizedType parameterizedType = (ParameterizedType) gReturnType;
             genericReturnType = (Class<?>) parameterizedType.getActualTypeArguments()[0];
         }
         
-        return genericReturnType;
+        return Optional.of(genericReturnType);
     }
 
     public String name() {

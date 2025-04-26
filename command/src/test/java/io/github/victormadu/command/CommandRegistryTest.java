@@ -2,6 +2,7 @@ package io.github.victormadu.command;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -46,5 +47,65 @@ class CommandRegistryTest {
 
         // Assert
         assertEquals(expectedResult, actualResult);
+    }
+
+    static class Data {
+        private String name;
+        private int age;
+    }
+
+    @Test
+    void should_DetectGenericClassOfReturnType_ForDifferentCommandOutputs() throws Throwable {
+
+        
+        class Service {
+            @Command("string")
+            public String string() {
+                return "hello";
+            }
+
+            @Command("stringList")
+            public List<String> stringList() {
+                List<String> result = new ArrayList<>();
+                result.add("hello");
+                result.add("world");
+                return result;
+            }
+
+            @Command("data")
+            public Data data() {
+                Data data = new Data();
+                data.name = "hello";
+                data.age = 123;
+                return data;
+            }
+
+            @Command("dataList")
+            public List<Data> dataList() {
+                List<Data> result = new ArrayList<>();
+                Data data = new Data();
+                data.name = "hello";
+                data.age = 123;
+                result.add(data);
+                return result;
+            }
+        }
+        
+        CommandRegistry registry = new CommandRegistry();
+        registry.registerService(new Service());
+
+        CommandRunner runner;
+
+        runner = registry.getRunner("string");
+        assertEquals(Optional.empty(), runner.getGenericClassOfReturnType());
+
+        runner = registry.getRunner("stringList");
+        assertEquals(Optional.of(String.class), runner.getGenericClassOfReturnType());
+
+        runner = registry.getRunner("data");
+        assertEquals(Optional.empty(), runner.getGenericClassOfReturnType());
+
+        runner = registry.getRunner("dataList");
+        assertEquals(Optional.of(Data.class), runner.getGenericClassOfReturnType());
     }
 }
