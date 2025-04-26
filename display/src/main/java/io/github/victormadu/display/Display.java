@@ -1,10 +1,11 @@
 package io.github.victormadu.display;
 
 import java.lang.reflect.Array;
+import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -15,17 +16,27 @@ import io.github.victormadu.display.annotation.Column;
 public class Display {
    
     public void table(Object o) {
+        if (o != null) {
+            table(o, o.getClass());
+        } 
+    }
+
+    public void table(Object o, Class<?> itemType) {
+        System.out.println(tableStringOf(listOf(o), itemType));
+    }
+
+
+    private List<?> listOf(Object o) {
         if (o == null) {
-        } else if (o instanceof Throwable) {
-            System.out.println(((Throwable) o).getMessage());
+            return Collections.emptyList();
         } else if (o instanceof List) {
-            System.out.println(table((List<?>) o));
+            return (List<?>) o;
         } else if (o instanceof Iterable) {
             List<Object> list = new ArrayList<>();
             ((Iterable<?>) o).forEach(list::add);
-            System.out.println(table(list));
+            return list;
         } else if (o instanceof Object[]) {
-            System.out.println(table(Arrays.asList((Object[]) o)));
+            return Arrays.asList((Object[]) o);
         } else if (o.getClass().isArray()) {
             int length = Array.getLength(o);
             List<Object> list = new ArrayList<>(length);
@@ -33,93 +44,90 @@ public class Display {
             for (int i = 0; i < length; i++) {
                 list.add(Array.get(o, i));
             }
-            
-            System.out.println(table(list));
+            return list;
         } else {
-            System.out.println(table(Collections.singletonList(o)));
+            return Collections.singletonList(o);
         }
     }
 
-    private String table(List<?> rows) {
-        if (rows.isEmpty()) return "";
-    
-        Class<?> clazz = rows.get(0).getClass();
-        List<java.lang.reflect.Field> fields = Arrays.stream(clazz.getDeclaredFields())
-                .filter(f -> f.isAnnotationPresent(Column.class))
-                .collect(java.util.stream.Collectors.toList());
-    
-        // Handle case where the class has no fields (e.g., String, Integer)
-        if (fields.isEmpty()) {
+  
+    private String tableStringOf(List<?> rows, Class<?> itemType) {
+
+        if (Throwable.class.isAssignableFrom(itemType)) {
+            if (rows.isEmpty()) return "";
             if (rows.size() == 1) {
-                return rows.get(0).toString();
+                return ((Throwable) rows.get(0)).getMessage();
             }
-    
-            // Single-column table with empty header
-            int colWidth = rows.stream()
-                    .map(r -> r != null ? r.toString().length() : 0)
-                    .max(Integer::compare)
-                    .orElse(0);
-    
-            StringBuilder sb = new StringBuilder();
-            String horizontal = buildSeparator(new int[]{colWidth}, '+', '-', '+');
-    
-            sb.append(horizontal).append("\n");
-            sb.append(buildRow(Collections.singletonList(""), new int[]{colWidth})).append("\n");
-            sb.append(horizontal).append("\n");
-    
-            for (Object row : rows) {
-                String text = row != null ? row.toString() : "";
-                sb.append(buildRow(Collections.singletonList(text), new int[]{colWidth})).append("\n");
-            }
-    
-            sb.append(horizontal);
-            return sb.toString();
+            return rows.toString();
         }
-    
-        // For normal objects with fields
-        List<List<String>> tableData = new ArrayList<>();
-        List<String> headers = headers(clazz);
-        tableData.add(headers);
-    
-        for (Object row : rows) {
-            List<String> rowData = new ArrayList<>();
-            for (java.lang.reflect.Field field : fields) {
-                field.setAccessible(true);
-                try {
-                    Object value = field.get(row);
-                    if (value instanceof Optional) {
-                        value = ((Optional<?>) value).orElse(null);
-                    }
-                    rowData.add(value != null ? value.toString() : "");
-                } catch (IllegalAccessException e) {
-                    rowData.add("");
-                }
+
+        List<Field> fields = columnFields(itemType);
+        List<String> headers = headers(fields);
+        List<List<String>> rowsData = contents(rows, fields);
+
+
+        if (fields.isEmpty()) {
+            if (rowsData.isEmpty()) {
+                return "";
             }
-            tableData.add(rowData);
+
+            headers = rowsData.get(0).stream().map((r) -> "").collect(java.util.stream.Collectors.toList());
         }
-    
+
+
+        StringBuilder sb = new StringBuilder();        
         int[] colWidths = new int[headers.size()];
-        for (List<String> row : tableData) {
+
+        for (int i = 0; i < headers.size(); i++) {
+            colWidths[i] = headers.get(i).length();
+        }
+        for (List<String> row : rowsData) {
             for (int i = 0; i < row.size(); i++) {
                 colWidths[i] = Math.max(colWidths[i], row.get(i).length());
             }
         }
-    
-        StringBuilder sb = new StringBuilder();
+
         String horizontal = buildSeparator(colWidths, '+', '-', '+');
-    
+        
         sb.append(horizontal).append("\n");
-        sb.append(buildRow(tableData.get(0), colWidths)).append("\n");
-        sb.append(horizontal).append("\n");
-    
-        for (int i = 1; i < tableData.size(); i++) {
-            sb.append(buildRow(tableData.get(i), colWidths)).append("\n");
+        sb.append(buildRow(headers, colWidths)).append("\n");
+        sb.append(horizontal).append("\n"); 
+
+        for (List<String> row : rowsData) {
+            sb.append(buildRow(row, colWidths)).append("\n");
+            sb.append(horizontal).append("\n"); 
         }
-    
-        sb.append(horizontal);
-        return sb.toString();
+
+        return sb.substring(0, sb.length() - 2) + "+";
     }
     
+    private List<List<String>> contents(List<?> rows, List<Field> fields) {
+        if (fields.isEmpty()) {
+            return rows.stream()
+                .map(r -> Collections.singletonList(r!= null ? r.toString() : ""))
+                .collect(java.util.stream.Collectors.toList());
+        } else {
+            return rows.stream()
+               .map(r -> {
+                   List<String> row = new ArrayList<>();
+                   
+                   for (Field field : fields) {
+                       field.setAccessible(true);
+                       try {
+                           Object value = field.get(r);
+                           if (value instanceof Optional) {
+                               value = ((Optional<?>) value).orElse(null);
+                           }   
+                           row.add(value!= null? value.toString() : "");
+                       } catch (IllegalAccessException e) {
+                           row.add("");
+                       }
+                   }
+                   return row;
+               }).collect(java.util.stream.Collectors.toList());
+        }
+    }
+
     private String buildRow(List<String> columns, int[] widths) {
         StringBuilder row = new StringBuilder("|");
       
@@ -155,21 +163,28 @@ public class Display {
         return result.toString();
     }
 
-    private final static Map<Class<?>, List<String>> HEADERS_CACHE = new HashMap<>();
+    private static final Map<Class<?>, List<Field>> COLUMN_FIELD_CACHE = new IdentityHashMap<>();
 
-    private static List<String> headers(Class<?> clazz) {
-        return HEADERS_CACHE.computeIfAbsent(clazz, (c) -> {
-            List<java.lang.reflect.Field> fields = Arrays.stream(c.getDeclaredFields())
-                .filter(f -> f.isAnnotationPresent(Column.class))
-                .collect(java.util.stream.Collectors.toList());
-            
-            return fields.stream()
-                .map(f -> {
-                    String value = f.getAnnotation(Column.class).value();
-                    if (value == null || value.isEmpty()) return f.getName();
-                    return value;
-                })
-                .collect(java.util.stream.Collectors.toList());
+    private static List<java.lang.reflect.Field> columnFields(Class<?> clazz) {
+        return COLUMN_FIELD_CACHE.computeIfAbsent(clazz, (c) -> {
+            return Arrays.stream(c.getDeclaredFields())
+               .filter(f -> f.isAnnotationPresent(Column.class))
+               .collect(java.util.stream.Collectors.toList());
+        });
+    }
+
+  
+    private final static Map<List<Field>, List<String>> HEADERS_CACHE = new IdentityHashMap<>();
+
+    private static List<String> headers(List<Field> fields) {
+        return HEADERS_CACHE.computeIfAbsent(fields, (fs) -> {
+            return fs.stream()
+              .map(f -> {
+                  String value = f.getAnnotation(Column.class).value();
+                  if (value == null || value.isEmpty()) return f.getName();
+                  return value;
+              })
+              .collect(java.util.stream.Collectors.toList());
         });
     }
 }
