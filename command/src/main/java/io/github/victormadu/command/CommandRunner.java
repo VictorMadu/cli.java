@@ -14,4 +14,8 @@ public class CommandRunner {
     public Object run() throws Throwable {
         return handler.execute(params);
     }
+
+    public Class<?> getGenericClassOfReturnType() {
+        return handler.getGenericReturnType();
+    }
 }
