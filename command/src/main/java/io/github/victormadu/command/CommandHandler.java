@@ -4,6 +4,8 @@ import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 import java.lang.reflect.Method;
+import java.lang.reflect.ParameterizedType;
+import java.lang.reflect.Type;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.LinkedHashMap;
@@ -13,10 +15,12 @@ import io.github.victormadu.command.annotation.Command;
 import io.github.victormadu.command.annotation.Param;
 
 class CommandHandler {
-    private final MethodHandle method;
+    private final MethodHandle methodHandle;
+    private final Method method;
     private final String name;
     private final Map<String, Class<?>> parameterMap = new LinkedHashMap<>();
-    private final Class<?> returnType;
+    
+    private Class<?> genericReturnType;
 
     public CommandHandler(Object service, Method method) {
         Command commandAnnotation = method.getAnnotation(Command.class);
@@ -55,7 +59,7 @@ class CommandHandler {
         }
         
         try {
-            this.method = MethodHandles.lookup()
+            this.methodHandle = MethodHandles.lookup()
                     .findVirtual(
                             method.getDeclaringClass(),
                             method.getName(),
@@ -64,8 +68,7 @@ class CommandHandler {
         } catch (NoSuchMethodException | IllegalAccessException e) {
             throw new RuntimeException("Failed to create command handler", e);
         } 
-
-        this.returnType = method.getReturnType();
+        this.method = method;
     }
 
     public Object execute(Map<String, String> params) throws Throwable {
@@ -83,7 +86,17 @@ class CommandHandler {
             args[i++] = convertValue(paramValue, entry.getValue());
         }
 
-        return method.invokeWithArguments(args);
+        return methodHandle.invokeWithArguments(args);
+    }
+
+    public Class<?> getGenericReturnType() {
+        if (genericReturnType == null) {
+            Type gReturnType = method.getGenericReturnType();
+            ParameterizedType parameterizedType = (ParameterizedType) gReturnType;
+            genericReturnType = (Class<?>) parameterizedType.getActualTypeArguments()[0];
+        }
+        
+        return genericReturnType;
     }
 
     public String name() {
